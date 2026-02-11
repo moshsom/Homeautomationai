@@ -48,46 +48,64 @@ def mainPage() {
         }
 
         section("<b>Devices</b>") {
-            paragraph "Select all devices you want Chatomation to access. " +
-                      "Devices must be selected here before the AI can use them."
-            input "lights", "capability.switch",
-                title: "Switches & Lights", multiple: true, required: false
-            input "dimmers", "capability.switchLevel",
-                title: "Dimmers", multiple: true, required: false
-            input "colorLights", "capability.colorControl",
-                title: "Color Lights", multiple: true, required: false
-            input "colorTempLights", "capability.colorTemperature",
-                title: "Color Temperature Lights", multiple: true, required: false
-            input "motionSensors", "capability.motionSensor",
-                title: "Motion Sensors", multiple: true, required: false
-            input "contactSensors", "capability.contactSensor",
-                title: "Contact Sensors (Doors/Windows)", multiple: true, required: false
-            input "tempSensors", "capability.temperatureMeasurement",
-                title: "Temperature Sensors", multiple: true, required: false
-            input "humiditySensors", "capability.relativeHumidityMeasurement",
-                title: "Humidity Sensors", multiple: true, required: false
-            input "illuminanceSensors", "capability.illuminanceMeasurement",
-                title: "Light Level Sensors", multiple: true, required: false
-            input "locks", "capability.lock",
-                title: "Locks", multiple: true, required: false
-            input "thermostats", "capability.thermostat",
-                title: "Thermostats", multiple: true, required: false
-            input "presenceSensors", "capability.presenceSensor",
-                title: "Presence Sensors", multiple: true, required: false
-            input "waterSensors", "capability.waterSensor",
-                title: "Water / Leak Sensors", multiple: true, required: false
-            input "shades", "capability.windowShade",
-                title: "Window Shades / Blinds", multiple: true, required: false
-            input "garageDoors", "capability.garageDoorControl",
-                title: "Garage Doors", multiple: true, required: false
-            input "fans", "capability.fanControl",
-                title: "Fans", multiple: true, required: false
-            input "alarms", "capability.alarm",
-                title: "Alarms / Sirens", multiple: true, required: false
-            input "speakers", "capability.speechSynthesis",
-                title: "Speech Devices", multiple: true, required: false
-            input "valves", "capability.valve",
-                title: "Valves", multiple: true, required: false
+            input "useAllDevices", "bool",
+                title: "Grant access to ALL devices (recommended)",
+                defaultValue: true, submitOnChange: true
+
+            if (useAllDevices) {
+                paragraph "Select all devices from the two lists below. " +
+                    "Actuators covers anything controllable (lights, switches, " +
+                    "locks, thermostats, etc.). Sensors covers anything that " +
+                    "reports data (motion, contact, temperature, etc.). " +
+                    "Many devices appear in both — that's normal."
+                input "allActuators", "capability.actuator",
+                    title: "All Actuators (lights, switches, locks, etc.)",
+                    multiple: true, required: false
+                input "allSensors", "capability.sensor",
+                    title: "All Sensors (motion, contact, temperature, etc.)",
+                    multiple: true, required: false
+            } else {
+                paragraph "Select devices by category. Only selected devices " +
+                    "will be available to the AI."
+                input "lights", "capability.switch",
+                    title: "Switches & Lights", multiple: true, required: false
+                input "dimmers", "capability.switchLevel",
+                    title: "Dimmers", multiple: true, required: false
+                input "colorLights", "capability.colorControl",
+                    title: "Color Lights", multiple: true, required: false
+                input "colorTempLights", "capability.colorTemperature",
+                    title: "Color Temperature Lights", multiple: true, required: false
+                input "motionSensors", "capability.motionSensor",
+                    title: "Motion Sensors", multiple: true, required: false
+                input "contactSensors", "capability.contactSensor",
+                    title: "Contact Sensors (Doors/Windows)", multiple: true, required: false
+                input "tempSensors", "capability.temperatureMeasurement",
+                    title: "Temperature Sensors", multiple: true, required: false
+                input "humiditySensors", "capability.relativeHumidityMeasurement",
+                    title: "Humidity Sensors", multiple: true, required: false
+                input "illuminanceSensors", "capability.illuminanceMeasurement",
+                    title: "Light Level Sensors", multiple: true, required: false
+                input "locks", "capability.lock",
+                    title: "Locks", multiple: true, required: false
+                input "thermostats", "capability.thermostat",
+                    title: "Thermostats", multiple: true, required: false
+                input "presenceSensors", "capability.presenceSensor",
+                    title: "Presence Sensors", multiple: true, required: false
+                input "waterSensors", "capability.waterSensor",
+                    title: "Water / Leak Sensors", multiple: true, required: false
+                input "shades", "capability.windowShade",
+                    title: "Window Shades / Blinds", multiple: true, required: false
+                input "garageDoors", "capability.garageDoorControl",
+                    title: "Garage Doors", multiple: true, required: false
+                input "fans", "capability.fanControl",
+                    title: "Fans", multiple: true, required: false
+                input "alarms", "capability.alarm",
+                    title: "Alarms / Sirens", multiple: true, required: false
+                input "speakers", "capability.speechSynthesis",
+                    title: "Speech Devices", multiple: true, required: false
+                input "valves", "capability.valve",
+                    title: "Valves", multiple: true, required: false
+            }
         }
 
         section("<b>Notifications</b>") {
@@ -134,13 +152,22 @@ def initialize() {
 
 def getAllDevices() {
     def allDevs = []
-    [lights, dimmers, colorLights, colorTempLights,
-     motionSensors, contactSensors, tempSensors, humiditySensors,
-     illuminanceSensors, locks, thermostats, presenceSensors,
-     waterSensors, shades, garageDoors, fans, alarms, speakers, valves
-    ].each { devList ->
-        if (devList) allDevs.addAll(devList)
+
+    if (useAllDevices) {
+        // Broad selection: actuators + sensors covers virtually everything
+        if (allActuators) allDevs.addAll(allActuators)
+        if (allSensors)   allDevs.addAll(allSensors)
+    } else {
+        // Per-category selection
+        [lights, dimmers, colorLights, colorTempLights,
+         motionSensors, contactSensors, tempSensors, humiditySensors,
+         illuminanceSensors, locks, thermostats, presenceSensors,
+         waterSensors, shades, garageDoors, fans, alarms, speakers, valves
+        ].each { devList ->
+            if (devList) allDevs.addAll(devList)
+        }
     }
+
     return allDevs.unique { it.id }
 }
 
