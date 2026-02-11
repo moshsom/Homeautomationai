@@ -277,7 +277,7 @@ private callOpenAI(String systemPrompt, List messages) {
             }
         }
     } catch (e) {
-        logError "OpenAI API call failed: ${e.getClass().getSimpleName()}: ${e.message}"
+        logError "OpenAI API call failed: ${e.message}"
         try {
             if (e.response?.data) {
                 logError "OpenAI error body: ${e.response.data}"
@@ -322,7 +322,7 @@ private callAnthropic(String systemPrompt, List messages) {
             }
         }
     } catch (e) {
-        logError "Anthropic API call failed: ${e.getClass().getSimpleName()}: ${e.message}"
+        logError "Anthropic API call failed: ${e.message}"
         try {
             if (e.response?.data) {
                 logError "Anthropic error body: ${e.response.data}"
