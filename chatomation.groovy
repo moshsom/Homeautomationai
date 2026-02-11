@@ -186,30 +186,44 @@ def buildDeviceContext() {
 
     def sb = new StringBuilder()
     devices.each { dev ->
-        sb.append("- ${dev.displayName}  (ID: ${dev.id})\n")
-        sb.append("    Capabilities: ${dev.capabilities.collect { it.name }.join(', ')}\n")
+        try {
+            sb.append("- ${dev.displayName}  (ID: ${dev.id})\n")
 
-        def cmds = dev.supportedCommands.collect { cmd ->
-            def args = cmd.arguments.collect { it.name }.join(', ')
-            args ? "${cmd.name}(${args})" : "${cmd.name}()"
-        }.join(', ')
-        sb.append("    Commands: ${cmds}\n")
+            // Capabilities — may be strings or objects depending on Hubitat version
+            try {
+                def caps = dev.capabilities.collect { it.toString() }.join(', ')
+                sb.append("    Capabilities: ${caps}\n")
+            } catch (ignored) {}
 
-        // Include a handful of key current-state attributes
-        def keyAttrs = ['switch', 'level', 'colorTemperature', 'hue', 'saturation',
-                        'motion', 'contact', 'temperature', 'humidity', 'illuminance',
-                        'lock', 'thermostatMode', 'heatingSetpoint', 'coolingSetpoint',
-                        'presence', 'water', 'windowShade', 'door', 'speed',
-                        'alarm', 'valve', 'battery']
-        def stateItems = []
-        keyAttrs.each { attr ->
-            def val = dev.currentValue(attr)
-            if (val != null) stateItems << "${attr}=${val}"
+            // Commands — build a safe list
+            try {
+                def cmds = dev.supportedCommands.collect { cmd ->
+                    "${cmd.name}()"
+                }.join(', ')
+                sb.append("    Commands: ${cmds}\n")
+            } catch (ignored) {}
+
+            // Key current-state attributes
+            def keyAttrs = ['switch', 'level', 'colorTemperature', 'hue', 'saturation',
+                            'motion', 'contact', 'temperature', 'humidity', 'illuminance',
+                            'lock', 'thermostatMode', 'heatingSetpoint', 'coolingSetpoint',
+                            'presence', 'water', 'windowShade', 'door', 'speed',
+                            'alarm', 'valve', 'battery']
+            def stateItems = []
+            keyAttrs.each { attr ->
+                try {
+                    def val = dev.currentValue(attr)
+                    if (val != null) stateItems << "${attr}=${val}"
+                } catch (ignored) {}
+            }
+            if (stateItems) {
+                sb.append("    State: ${stateItems.join(', ')}\n")
+            }
+            sb.append("\n")
+        } catch (e) {
+            sb.append("    (error reading device details)\n\n")
+            log.warn "Chatomation: error reading device ${dev.displayName}: ${e.message}"
         }
-        if (stateItems) {
-            sb.append("    State: ${stateItems.join(', ')}\n")
-        }
-        sb.append("\n")
     }
     return sb.toString()
 }
