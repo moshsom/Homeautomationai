@@ -243,68 +243,91 @@ def callAI(String systemPrompt, List messages) {
 private callOpenAI(String systemPrompt, List messages) {
     def allMessages = [[role: "system", content: systemPrompt]] + messages
 
-    def body = [
+    def requestBody = [
         model      : aiModel ?: "gpt-4o",
         messages   : allMessages,
         max_tokens : 4096,
         temperature: 0.7
     ]
 
+    def jsonBody = groovy.json.JsonOutput.toJson(requestBody)
+    logDebug "OpenAI request: model=${requestBody.model}, messages=${allMessages.size()}, bodySize=${jsonBody.size()}"
+
     def params = [
-        uri               : "https://api.openai.com/v1/chat/completions",
-        headers           : ["Authorization": "Bearer ${apiKey}"],
-        contentType       : "application/json",
-        requestContentType: "application/json",
-        body              : groovy.json.JsonOutput.toJson(body),
-        timeout           : 60
+        uri    : "https://api.openai.com/v1/chat/completions",
+        headers: [
+            "Authorization": "Bearer ${apiKey}",
+            "Content-Type" : "application/json"
+        ],
+        body   : jsonBody
     ]
 
     def responseText = null
     try {
         httpPost(params) { resp ->
-            if (resp.status == 200) {
-                responseText = resp.data?.choices?.getAt(0)?.message?.content
-            } else {
-                logError "OpenAI API returned status ${resp.status}"
+            logDebug "OpenAI response status: ${resp.status}"
+            def respData = resp.data
+            // Handle both auto-parsed JSON and raw string responses
+            if (respData instanceof String) {
+                respData = new groovy.json.JsonSlurper().parseText(respData)
+            }
+            responseText = respData?.choices?.getAt(0)?.message?.content
+            if (!responseText) {
+                logError "OpenAI response missing expected data: ${respData}"
             }
         }
     } catch (e) {
-        logError "OpenAI API call failed: ${e.message}"
+        logError "OpenAI API call failed: ${e.getClass().getSimpleName()}: ${e.message}"
+        try {
+            if (e.response?.data) {
+                logError "OpenAI error body: ${e.response.data}"
+            }
+        } catch (ignored) {}
     }
     return responseText
 }
 
 private callAnthropic(String systemPrompt, List messages) {
-    def body = [
+    def requestBody = [
         model     : aiModel ?: "claude-sonnet-4-5-20250929",
         max_tokens: 4096,
         system    : systemPrompt,
         messages  : messages
     ]
 
+    def jsonBody = groovy.json.JsonOutput.toJson(requestBody)
+    logDebug "Anthropic request: model=${requestBody.model}, messages=${messages.size()}, bodySize=${jsonBody.size()}"
+
     def params = [
-        uri               : "https://api.anthropic.com/v1/messages",
-        headers           : [
+        uri    : "https://api.anthropic.com/v1/messages",
+        headers: [
             "x-api-key"        : apiKey,
-            "anthropic-version" : "2023-06-01"
+            "anthropic-version" : "2023-06-01",
+            "Content-Type"      : "application/json"
         ],
-        contentType       : "application/json",
-        requestContentType: "application/json",
-        body              : groovy.json.JsonOutput.toJson(body),
-        timeout           : 60
+        body   : jsonBody
     ]
 
     def responseText = null
     try {
         httpPost(params) { resp ->
-            if (resp.status == 200) {
-                responseText = resp.data?.content?.getAt(0)?.text
-            } else {
-                logError "Anthropic API returned status ${resp.status}"
+            logDebug "Anthropic response status: ${resp.status}"
+            def respData = resp.data
+            if (respData instanceof String) {
+                respData = new groovy.json.JsonSlurper().parseText(respData)
+            }
+            responseText = respData?.content?.getAt(0)?.text
+            if (!responseText) {
+                logError "Anthropic response missing expected data: ${respData}"
             }
         }
     } catch (e) {
-        logError "Anthropic API call failed: ${e.message}"
+        logError "Anthropic API call failed: ${e.getClass().getSimpleName()}: ${e.message}"
+        try {
+            if (e.response?.data) {
+                logError "Anthropic error body: ${e.response.data}"
+            }
+        } catch (ignored) {}
     }
     return responseText
 }

@@ -142,8 +142,10 @@ private processUserMessage(String message) {
     } else {
         state.conversation << [role: "assistant",
             content: "Sorry, I could not reach the AI service. " +
-                     "Please check your API key in the Chatomation settings and try again."]
-        state.lastError = "AI API call returned no response."
+                     "Please check your API key in the Chatomation parent app settings " +
+                     "and try again. Check Hubitat Logs for detailed error info."]
+        state.lastError = "AI API call returned no response. " +
+            "Open Hubitat Logs (gear icon → Logs) and look for 'Chatomation' errors."
     }
 }
 
