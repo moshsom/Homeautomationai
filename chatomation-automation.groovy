@@ -97,6 +97,9 @@ def chatPage() {
             input "userMessage", "text", title: "Your message",
                 required: false, submitOnChange: false
             input "sendMessage", "button", title: "Send"
+            paragraph "<div style='color:#888;font-size:13px;margin-top:4px;'>" +
+                "After clicking Send, please wait — the AI may take " +
+                "several seconds to respond. The page will update automatically.</div>"
         }
     }
 }

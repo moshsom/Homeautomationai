@@ -153,12 +153,14 @@ def initialize() {
 def getAllDevices() {
     def allDevs = []
 
-    if (useAllDevices) {
+    if (useAllDevices != false) {
         // Broad selection: actuators + sensors covers virtually everything
         if (allActuators) allDevs.addAll(allActuators)
         if (allSensors)   allDevs.addAll(allSensors)
-    } else {
-        // Per-category selection
+    }
+
+    if (!allDevs) {
+        // Fall through to per-category selection if broad selection is empty
         [lights, dimmers, colorLights, colorTempLights,
          motionSensors, contactSensors, tempSensors, humiditySensors,
          illuminanceSensors, locks, thermostats, presenceSensors,
@@ -168,7 +170,9 @@ def getAllDevices() {
         }
     }
 
-    return allDevs.unique { it.id }
+    def unique = allDevs.unique { it.id }
+    logDebug "getAllDevices() returning ${unique.size()} devices"
+    return unique
 }
 
 def getDeviceById(deviceId) {
