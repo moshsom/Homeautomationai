@@ -68,10 +68,11 @@ def chatPage() {
         section() {
             if (state.conversation) {
                 state.conversation.each { msg ->
+                    def timestamp = msg.ts ? "<span style='color:#999;font-size:11px;float:right;'>${msg.ts}</span>" : ""
                     if (msg.role == "user") {
                         paragraph "<div style='background:#f5f5f5;padding:10px 14px;" +
                             "border-radius:10px;margin:6px 0;border-left:4px solid #2196F3;'>" +
-                            "<b>You:</b><br/>${escapeHtml(msg.content)}</div>"
+                            "${timestamp}<b>You:</b><br/>${escapeHtml(msg.content)}</div>"
                     } else if (msg.role == "assistant") {
                         // Hide raw JSON blocks from the display
                         def display = msg.content.replaceAll(
@@ -79,7 +80,7 @@ def chatPage() {
                             '<i>[automation rule generated]</i>')
                         paragraph "<div style='background:#e3f2fd;padding:10px 14px;" +
                             "border-radius:10px;margin:6px 0;border-left:4px solid #4CAF50;'>" +
-                            "<b>Chatomation:</b><br/>${display}</div>"
+                            "${timestamp}<b>Chatomation:</b><br/>${display}</div>"
                     }
                 }
             }
@@ -92,14 +93,28 @@ def chatPage() {
             }
         }
 
-        // ---- Message input ----
+        // ---- Message input + spinner ----
         section() {
+            // CSS spinner animation
+            paragraph "<style>@keyframes chatomation-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>"
+
             input "userMessage", "text", title: "Your message",
                 required: false, submitOnChange: false
             input "sendMessage", "button", title: "Send"
-            paragraph "<div style='color:#888;font-size:13px;margin-top:4px;'>" +
-                "After clicking Send, please wait — the AI may take " +
-                "several seconds to respond. The page will update automatically.</div>"
+
+            // Spinner + help text shown via JS when Send is clicked
+            paragraph "<div id='chatomation-wait' style='display:none;margin-top:8px;'>" +
+                "<span style='display:inline-block;width:18px;height:18px;" +
+                "border:3px solid #ddd;border-top:3px solid #2196F3;border-radius:50%;" +
+                "animation:chatomation-spin 1s linear infinite;vertical-align:middle;'></span>" +
+                " <span style='color:#555;font-size:14px;vertical-align:middle;'>AI is thinking...</span></div>" +
+                "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
+                "After clicking Send, please wait for the AI to respond.</div>" +
+                "<script>document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
+                "var w=document.getElementById('chatomation-wait');" +
+                "if(w)w.style.display='block';" +
+                "var h=document.getElementById('chatomation-hint');" +
+                "if(h)h.style.display='none';});</script>"
         }
     }
 }
@@ -125,15 +140,17 @@ def appButtonHandler(String btn) {
 private processUserMessage(String message) {
     if (!state.conversation) state.conversation = []
 
-    // Append user message
-    state.conversation << [role: "user", content: message]
+    // Append user message with timestamp
+    def now = new Date().format("yyyy-MM-dd h:mm a")
+    state.conversation << [role: "user", content: message, ts: now]
 
     // Call AI
     def systemPrompt = buildSystemPrompt()
     def response = parent.callAI(systemPrompt, state.conversation)
 
     if (response) {
-        state.conversation << [role: "assistant", content: response]
+        def respTime = new Date().format("yyyy-MM-dd h:mm a")
+        state.conversation << [role: "assistant", content: response, ts: respTime]
 
         // Look for a rule JSON in the response
         def ruleJson = extractRuleJson(response)
@@ -143,7 +160,8 @@ private processUserMessage(String message) {
 
         trimConversation()
     } else {
-        state.conversation << [role: "assistant",
+        def errTime = new Date().format("yyyy-MM-dd h:mm a")
+        state.conversation << [role: "assistant", ts: errTime,
             content: "Sorry, I could not reach the AI service. " +
                      "Please check your API key in the Chatomation parent app settings " +
                      "and try again. Check Hubitat Logs for detailed error info."]
@@ -294,6 +312,7 @@ def installed() {
     log.info "Chatomation Automation installed"
     state.conversation = [
         [role: "assistant",
+         ts: new Date().format("yyyy-MM-dd h:mm a"),
          content: "Hi! I'm Chatomation. Describe the automation you'd like " +
                   "to create and I'll set it up for you.\n\n" +
                   "For example:\n" +

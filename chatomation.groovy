@@ -189,18 +189,18 @@ def buildDeviceContext() {
         try {
             sb.append("- ${dev.displayName}  (ID: ${dev.id})\n")
 
-            // Capabilities — may be strings or objects depending on Hubitat version
+            // Capabilities — use string interpolation to avoid .name calls
             try {
-                def caps = dev.capabilities.collect { it.toString() }.join(', ')
-                sb.append("    Capabilities: ${caps}\n")
+                def capList = []
+                dev.capabilities.each { capList << "${it}" }
+                sb.append("    Capabilities: ${capList.join(', ')}\n")
             } catch (ignored) {}
 
-            // Commands — build a safe list
+            // Commands — use string interpolation to avoid .name calls
             try {
-                def cmds = dev.supportedCommands.collect { cmd ->
-                    "${cmd.name}()"
-                }.join(', ')
-                sb.append("    Commands: ${cmds}\n")
+                def cmdList = []
+                dev.supportedCommands.each { cmdList << "${it}" }
+                sb.append("    Commands: ${cmdList.join(', ')}\n")
             } catch (ignored) {}
 
             // Key current-state attributes
