@@ -176,10 +176,19 @@ def getAllDevices() {
 }
 
 def getDeviceById(deviceId) {
-    return getAllDevices().find { it.id.toString() == deviceId.toString() }
+    def id = deviceId.toString()
+    def devices = getAllDevices()
+    log.info "Chatomation: getDeviceById(${id}) — searching ${devices?.size() ?: 0} devices"
+    def found = devices.find { it.id.toString() == id }
+    if (!found) {
+        log.error "Chatomation: device ${id} NOT found. Available IDs: ${devices.collect { it.id }.join(', ')}"
+    }
+    return found
 }
 
 // Build a text description of every device for the AI system prompt.
+// Avoids accessing .capabilities and .supportedCommands which crash
+// in Hubitat's Groovy sandbox. The AI infers device type from state.
 def buildDeviceContext() {
     def devices = getAllDevices()
     if (!devices) return "No devices have been selected in the Chatomation parent app.\n"
@@ -189,26 +198,13 @@ def buildDeviceContext() {
         try {
             sb.append("- ${dev.displayName}  (ID: ${dev.id})\n")
 
-            // Capabilities — use string interpolation to avoid .name calls
-            try {
-                def capList = []
-                dev.capabilities.each { capList << "${it}" }
-                sb.append("    Capabilities: ${capList.join(', ')}\n")
-            } catch (ignored) {}
-
-            // Commands — use string interpolation to avoid .name calls
-            try {
-                def cmdList = []
-                dev.supportedCommands.each { cmdList << "${it}" }
-                sb.append("    Commands: ${cmdList.join(', ')}\n")
-            } catch (ignored) {}
-
-            // Key current-state attributes
+            // State attributes — the AI uses these to identify device type
             def keyAttrs = ['switch', 'level', 'colorTemperature', 'hue', 'saturation',
-                            'motion', 'contact', 'temperature', 'humidity', 'illuminance',
-                            'lock', 'thermostatMode', 'heatingSetpoint', 'coolingSetpoint',
-                            'presence', 'water', 'windowShade', 'door', 'speed',
-                            'alarm', 'valve', 'battery']
+                            'colorMode', 'color', 'motion', 'contact', 'temperature',
+                            'humidity', 'illuminance', 'lock', 'thermostatMode',
+                            'heatingSetpoint', 'coolingSetpoint', 'thermostatFanMode',
+                            'presence', 'water', 'windowShade', 'position', 'door',
+                            'speed', 'alarm', 'valve', 'battery', 'power', 'energy']
             def stateItems = []
             keyAttrs.each { attr ->
                 try {
@@ -221,10 +217,10 @@ def buildDeviceContext() {
             }
             sb.append("\n")
         } catch (e) {
-            sb.append("    (error reading device details)\n\n")
-            log.warn "Chatomation: error reading device ${dev.displayName}: ${e.message}"
+            sb.append("- (device error: ${e.message})\n\n")
         }
     }
+    logInfo "buildDeviceContext: ${devices.size()} devices described"
     return sb.toString()
 }
 
