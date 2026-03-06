@@ -68,7 +68,7 @@ def chatPage() {
         section() {
             if (state.conversation) {
                 def msgs = state.conversation
-                def recentCount = 10
+                def recentCount = 6
                 def hasOlder = msgs.size() > recentCount
                 def olderMsgs = hasOlder ? msgs[0..-(recentCount + 1)] : []
                 def recentMsgs = hasOlder ? msgs[-(recentCount)..-1] : msgs
