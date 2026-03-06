@@ -67,21 +67,27 @@ def chatPage() {
         // ---- Conversation history ----
         section() {
             if (state.conversation) {
-                state.conversation.each { msg ->
-                    def timestamp = msg.ts ? "<span style='color:#999;font-size:11px;float:right;'>${msg.ts}</span>" : ""
-                    if (msg.role == "user") {
-                        paragraph "<div style='background:#f5f5f5;padding:10px 14px;" +
-                            "border-radius:10px;margin:6px 0;border-left:4px solid #2196F3;'>" +
-                            "${timestamp}<b>You:</b><br/>${escapeHtml(msg.content)}</div>"
-                    } else if (msg.role == "assistant") {
-                        // Hide raw JSON blocks from the display
-                        def display = msg.content.replaceAll(
-                            /(?s)```json\s*\{.*?\}\s*```/,
-                            '<i>[automation rule generated]</i>')
-                        paragraph "<div style='background:#e3f2fd;padding:10px 14px;" +
-                            "border-radius:10px;margin:6px 0;border-left:4px solid #4CAF50;'>" +
-                            "${timestamp}<b>Chatomation:</b><br/>${display}</div>"
+                def msgs = state.conversation
+                def recentCount = 10
+                def hasOlder = msgs.size() > recentCount
+                def olderMsgs = hasOlder ? msgs[0..-(recentCount + 1)] : []
+                def recentMsgs = hasOlder ? msgs[-(recentCount)..-1] : msgs
+
+                // Collapsed older messages
+                if (hasOlder) {
+                    def olderHtml = "<details style='margin-bottom:8px;'>" +
+                        "<summary style='cursor:pointer;color:#666;font-size:13px;" +
+                        "padding:6px 0;'>Show ${olderMsgs.size()} earlier messages</summary>"
+                    olderMsgs.each { msg ->
+                        olderHtml += renderMessage(msg)
                     }
+                    olderHtml += "</details>"
+                    paragraph olderHtml
+                }
+
+                // Recent messages always visible
+                recentMsgs.each { msg ->
+                    paragraph renderMessage(msg)
                 }
             }
 
@@ -342,6 +348,23 @@ def uninstalled() {
 // ===========================================================================
 //  Helpers
 // ===========================================================================
+
+private renderMessage(Map msg) {
+    def timestamp = msg.ts ? "<span style='color:#999;font-size:11px;float:right;'>${msg.ts}</span>" : ""
+    if (msg.role == "user") {
+        return "<div style='background:#f5f5f5;padding:10px 14px;" +
+            "border-radius:10px;margin:6px 0;border-left:4px solid #2196F3;'>" +
+            "${timestamp}<b>You:</b><br/>${escapeHtml(msg.content)}</div>"
+    } else if (msg.role == "assistant") {
+        def display = msg.content.replaceAll(
+            /(?s)```json\s*\{.*?\}\s*```/,
+            '<i>[automation rule generated]</i>')
+        return "<div style='background:#e3f2fd;padding:10px 14px;" +
+            "border-radius:10px;margin:6px 0;border-left:4px solid #4CAF50;'>" +
+            "${timestamp}<b>Chatomation:</b><br/>${display}</div>"
+    }
+    return ""
+}
 
 private escapeHtml(String text) {
     if (!text) return ""
