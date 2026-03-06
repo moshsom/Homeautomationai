@@ -4,7 +4,7 @@
  *  Each instance represents a single AI-created automation with its own
  *  conversation thread.  The user describes what they want in plain English,
  *  the AI asks clarifying questions if needed, then generates a structured
- *  rule that this app executes locally on the hub.
+ *  rule.  The parent app handles all event subscriptions and command execution.
  */
 
 definition(
@@ -173,8 +173,6 @@ private processUserMessage(String message) {
 private trimConversation() {
     def max = 40
     if (state.conversation.size() > max) {
-        // Keep the first two messages (welcome + first user message) and
-        // the most recent messages.
         def keep = max - 2
         state.conversation = state.conversation[0..1] +
             state.conversation[-(keep)..-1]
@@ -288,7 +286,7 @@ private extractRuleJson(String text) {
 }
 
 // ===========================================================================
-//  Rule activation
+//  Rule activation — registers rule with parent for execution
 // ===========================================================================
 
 private activateRule(Map rule) {
@@ -300,8 +298,9 @@ private activateRule(Map rule) {
 
     app.updateLabel(rule.name ?: "Chatomation Automation")
 
-    // Rebuild subscriptions
-    initialize()
+    // Register rule with parent — parent handles all subscriptions and execution
+    def enabled = (automationEnabled != false)
+    parent.registerChildRule(app.id.toString(), rule, enabled)
 }
 
 // ===========================================================================
@@ -322,315 +321,22 @@ def installed() {
                   "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
     ]
     state.enabled = true
-    initialize()
 }
 
 def updated() {
     log.info "Chatomation Automation updated"
     state.enabled = (automationEnabled != false)
-    initialize()
+
+    // Update parent with current enabled state
+    if (state.currentRule) {
+        parent.setChildRuleEnabled(app.id.toString(), state.enabled)
+    }
 }
 
 def uninstalled() {
-    unsubscribe()
-    unschedule()
+    // Tell parent to remove our rule and rebuild subscriptions
+    parent.unregisterChildRule(app.id.toString())
     log.info "Chatomation Automation uninstalled"
-}
-
-def initialize() {
-    unsubscribe()
-    unschedule()
-
-    if (state.currentRule && state.enabled) {
-        setupSubscriptions()
-    }
-}
-
-// ===========================================================================
-//  Subscription setup
-// ===========================================================================
-
-private setupSubscriptions() {
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    // Track which sun events we've already subscribed to
-    def subscribedSun = [] as Set
-
-    rule.actions.eachWithIndex { action, idx ->
-        def trigger = action.trigger
-        if (!trigger?.type) return
-
-        switch (trigger.type) {
-            case "device":
-                def dev = parent.getDeviceById(trigger.deviceId)
-                if (dev) {
-                    subscribe(dev, trigger.attribute, "deviceEventHandler")
-                    log.info "Chatomation: subscribed ${dev.displayName}.${trigger.attribute}"
-                } else {
-                    log.warn "Chatomation: device ID ${trigger.deviceId} not found"
-                }
-                break
-
-            case "time":
-                if (trigger.time) {
-                    def parts = trigger.time.split(":")
-                    def h = parts[0]
-                    def m = parts[1]
-                    schedule("0 ${m} ${h} ? * *", "scheduledTimeHandler")
-                    log.info "Chatomation: scheduled daily at ${trigger.time}"
-                }
-                break
-
-            case "sunrise":
-                if (!subscribedSun.contains("sunrise")) {
-                    scheduleSunEvent("sunrise", trigger.offset ?: 0)
-                    subscribedSun << "sunrise"
-                }
-                break
-
-            case "sunset":
-                if (!subscribedSun.contains("sunset")) {
-                    scheduleSunEvent("sunset", trigger.offset ?: 0)
-                    subscribedSun << "sunset"
-                }
-                break
-
-            case "mode":
-                subscribe(location, "mode", "modeChangeHandler")
-                log.info "Chatomation: subscribed to hub mode changes"
-                break
-        }
-    }
-}
-
-private scheduleSunEvent(String which, int offsetMinutes) {
-    def sunTimes = getSunriseAndSunset()
-    def base = (which == "sunrise") ? sunTimes.sunrise : sunTimes.sunset
-    def target = new Date(base.time + (offsetMinutes * 60000L))
-    def handler = (which == "sunrise") ? "sunriseHandler" : "sunsetHandler"
-
-    if (target.after(new Date())) {
-        runOnce(target, handler)
-        log.info "Chatomation: ${which} event scheduled for ${target}"
-    } else {
-        log.debug "Chatomation: ${which} event already passed today"
-    }
-
-    // Reschedule tomorrow at 00:05
-    schedule("0 5 0 ? * *", "rescheduleSunEvents")
-}
-
-def rescheduleSunEvents() {
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    rule.actions.each { action ->
-        def t = action.trigger
-        if (t?.type == "sunrise") scheduleSunEvent("sunrise", t.offset ?: 0)
-        if (t?.type == "sunset")  scheduleSunEvent("sunset",  t.offset ?: 0)
-    }
-}
-
-// ===========================================================================
-//  Event handlers
-// ===========================================================================
-
-def deviceEventHandler(evt) {
-    if (!state.enabled) return
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    logDebug "Event: ${evt.device.displayName}.${evt.name} = ${evt.value}"
-
-    rule.actions.each { action ->
-        def t = action.trigger
-        if (t?.type != "device") return
-        if (t.deviceId.toString() != evt.device.id.toString()) return
-        if (t.attribute != evt.name) return
-        if (t.value.toString() != evt.value.toString()) return
-
-        processTriggeredAction(action)
-    }
-}
-
-def scheduledTimeHandler() {
-    if (!state.enabled) return
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    def now = new Date()
-    def nowTime = String.format("%02d:%02d", now.hours, now.minutes)
-
-    logDebug "Scheduled handler fired at ${nowTime}"
-
-    rule.actions.each { action ->
-        if (action.trigger?.type == "time" && action.trigger.time == nowTime) {
-            processTriggeredAction(action)
-        }
-    }
-}
-
-def sunriseHandler() {
-    if (!state.enabled) return
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    logDebug "Sunrise handler fired"
-
-    rule.actions.each { action ->
-        if (action.trigger?.type == "sunrise") {
-            processTriggeredAction(action)
-        }
-    }
-}
-
-def sunsetHandler() {
-    if (!state.enabled) return
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    logDebug "Sunset handler fired"
-
-    rule.actions.each { action ->
-        if (action.trigger?.type == "sunset") {
-            processTriggeredAction(action)
-        }
-    }
-}
-
-def modeChangeHandler(evt) {
-    if (!state.enabled) return
-    def rule = state.currentRule
-    if (!rule?.actions) return
-
-    logDebug "Mode changed to ${evt.value}"
-
-    rule.actions.each { action ->
-        if (action.trigger?.type == "mode" &&
-            action.trigger.value?.toString() == evt.value?.toString()) {
-            processTriggeredAction(action)
-        }
-    }
-}
-
-// ===========================================================================
-//  Action processing
-// ===========================================================================
-
-private processTriggeredAction(Map action) {
-    // Evaluate conditions
-    if (!evaluateConditions(action.conditions)) {
-        logDebug "Conditions not met — skipping action"
-        return
-    }
-
-    // Cancel pending delayed commands if requested
-    if (action.cancelPendingDelay) {
-        unschedule("delayedCommandHandler")
-        logDebug "Cancelled pending delayed commands"
-    }
-
-    def delayMinutes = action.delay ? (action.delay as int) : 0
-    if (delayMinutes > 0) {
-        def delaySec = delayMinutes * 60
-        log.info "Chatomation: scheduling commands in ${delayMinutes} min"
-        runIn(delaySec, "delayedCommandHandler",
-              [data: [commands: action.commands]])
-    } else {
-        executeCommands(action.commands)
-    }
-}
-
-def delayedCommandHandler(data) {
-    if (!state.enabled) return
-    log.info "Chatomation: executing delayed commands"
-    executeCommands(data.commands)
-}
-
-// ===========================================================================
-//  Condition evaluation
-// ===========================================================================
-
-private evaluateConditions(List conditions) {
-    if (!conditions) return true
-    return conditions.every { cond -> evaluateSingleCondition(cond) }
-}
-
-private evaluateSingleCondition(Map cond) {
-    switch (cond.type) {
-        case "time":      return checkTimeCond(cond)
-        case "mode":      return checkModeCond(cond)
-        case "device":    return checkDeviceCond(cond)
-        case "dayOfWeek": return checkDayOfWeekCond(cond)
-        default:
-            log.warn "Chatomation: unknown condition type '${cond.type}'"
-            return true
-    }
-}
-
-private checkTimeCond(Map c) {
-    def now = new Date()
-    def cur = now.hours * 60 + now.minutes
-
-    Integer aft = null
-    Integer bef = null
-    if (c.after)  { def p = c.after.split(":");  aft = (p[0] as int) * 60 + (p[1] as int) }
-    if (c.before) { def p = c.before.split(":"); bef = (p[0] as int) * 60 + (p[1] as int) }
-
-    if (aft != null && bef != null) {
-        return (aft > bef) ? (cur >= aft || cur < bef)   // crosses midnight
-                           : (cur >= aft && cur < bef)
-    }
-    if (aft != null) return cur >= aft
-    if (bef != null) return cur < bef
-    return true
-}
-
-private checkModeCond(Map c) {
-    return c.values?.contains(location.mode)
-}
-
-private checkDeviceCond(Map c) {
-    def val = parent.getDeviceCurrentValue(c.deviceId, c.attribute)
-    if (val == null) {
-        log.warn "Chatomation: condition device ${c.deviceId} not found or no value"
-        return false
-    }
-    return val.toString() == c.value?.toString()
-}
-
-private checkDayOfWeekCond(Map c) {
-    def dayNames = ["Sunday","Monday","Tuesday","Wednesday",
-                    "Thursday","Friday","Saturday"]
-    return c.days?.contains(dayNames[new Date().day])
-}
-
-// ===========================================================================
-//  Command execution
-// ===========================================================================
-
-private executeCommands(List commands) {
-    if (!commands) return
-
-    commands.each { cmd ->
-        try {
-            // Delegate to parent app which owns the device references
-            def success = parent.executeDeviceCommand(
-                cmd.deviceId, cmd.command, cmd.args ?: [])
-            if (!success) {
-                parent.sendNotification(
-                    "Chatomation [${state.automationName}]: failed to execute " +
-                    "'${cmd.command}' on device ${cmd.deviceId}")
-            }
-        } catch (e) {
-            log.error "Chatomation: command failed — ${cmd.command} on " +
-                      "device ${cmd.deviceId}: ${e.message}"
-            parent.sendNotification(
-                "Chatomation [${state.automationName}]: command " +
-                "'${cmd.command}' failed — ${e.message}")
-        }
-    }
 }
 
 // ===========================================================================
