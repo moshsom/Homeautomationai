@@ -592,12 +592,12 @@ private checkModeCond(Map c) {
 }
 
 private checkDeviceCond(Map c) {
-    def dev = parent.getDeviceById(c.deviceId)
-    if (!dev) {
-        log.warn "Chatomation: condition device ${c.deviceId} not found"
+    def val = parent.getDeviceCurrentValue(c.deviceId, c.attribute)
+    if (val == null) {
+        log.warn "Chatomation: condition device ${c.deviceId} not found or no value"
         return false
     }
-    return dev.currentValue(c.attribute)?.toString() == c.value?.toString()
+    return val.toString() == c.value?.toString()
 }
 
 private checkDayOfWeekCond(Map c) {
@@ -615,22 +615,13 @@ private executeCommands(List commands) {
 
     commands.each { cmd ->
         try {
-            def dev = parent.getDeviceById(cmd.deviceId)
-            if (!dev) {
-                log.error "Chatomation: device ${cmd.deviceId} not found for " +
-                          "command '${cmd.command}'"
+            // Delegate to parent app which owns the device references
+            def success = parent.executeDeviceCommand(
+                cmd.deviceId, cmd.command, cmd.args ?: [])
+            if (!success) {
                 parent.sendNotification(
-                    "Chatomation [${state.automationName}]: device not found " +
-                    "for command '${cmd.command}'")
-                return
-            }
-
-            if (cmd.args) {
-                log.info "Chatomation: ${dev.displayName}.${cmd.command}(${cmd.args})"
-                dev."${cmd.command}"(*cmd.args)
-            } else {
-                log.info "Chatomation: ${dev.displayName}.${cmd.command}()"
-                dev."${cmd.command}"()
+                    "Chatomation [${state.automationName}]: failed to execute " +
+                    "'${cmd.command}' on device ${cmd.deviceId}")
             }
         } catch (e) {
             log.error "Chatomation: command failed — ${cmd.command} on " +

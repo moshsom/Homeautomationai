@@ -355,6 +355,44 @@ private callAnthropic(String systemPrompt, List messages) {
 }
 
 // ---------------------------------------------------------------------------
+//  Device command execution (called by child apps at runtime)
+//  Runs in parent context where device references are available.
+// ---------------------------------------------------------------------------
+
+def executeDeviceCommand(deviceId, String command, List args) {
+    def dev = getDeviceById(deviceId)
+    if (!dev) {
+        logError "executeDeviceCommand: device ${deviceId} not found for '${command}'"
+        return false
+    }
+    try {
+        if (args) {
+            log.info "Chatomation: ${dev.displayName}.${command}(${args})"
+            dev."${command}"(*args)
+        } else {
+            log.info "Chatomation: ${dev.displayName}.${command}()"
+            dev."${command}"()
+        }
+        return true
+    } catch (e) {
+        logError "Command '${command}' failed on ${dev.displayName}: ${e.message}"
+        return false
+    }
+}
+
+// Get current value of a device attribute (called by child apps for condition checks)
+def getDeviceCurrentValue(deviceId, String attribute) {
+    def dev = getDeviceById(deviceId)
+    if (!dev) return null
+    try {
+        return dev.currentValue(attribute)
+    } catch (e) {
+        logError "Error reading ${attribute} from device ${deviceId}: ${e.message}"
+        return null
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Notifications
 // ---------------------------------------------------------------------------
 
