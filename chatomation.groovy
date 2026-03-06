@@ -153,25 +153,30 @@ def initialize() {
 def getAllDevices() {
     def allDevs = []
 
-    if (useAllDevices != false) {
-        // Broad selection: actuators + sensors covers virtually everything
-        if (allActuators) allDevs.addAll(allActuators)
-        if (allSensors)   allDevs.addAll(allSensors)
+    // Debug: always log at warn level so it's visible regardless of log setting
+    log.warn "Chatomation getAllDevices: useAllDevices=${settings?.useAllDevices}, " +
+        "allActuators=${settings?.allActuators?.size() ?: 'null'}, " +
+        "allSensors=${settings?.allSensors?.size() ?: 'null'}"
+
+    if (settings?.useAllDevices != false) {
+        if (settings?.allActuators) allDevs.addAll(settings.allActuators)
+        if (settings?.allSensors)   allDevs.addAll(settings.allSensors)
     }
 
     if (!allDevs) {
         // Fall through to per-category selection if broad selection is empty
-        [lights, dimmers, colorLights, colorTempLights,
-         motionSensors, contactSensors, tempSensors, humiditySensors,
-         illuminanceSensors, locks, thermostats, presenceSensors,
-         waterSensors, shades, garageDoors, fans, alarms, speakers, valves
+        [settings?.lights, settings?.dimmers, settings?.colorLights, settings?.colorTempLights,
+         settings?.motionSensors, settings?.contactSensors, settings?.tempSensors, settings?.humiditySensors,
+         settings?.illuminanceSensors, settings?.locks, settings?.thermostats, settings?.presenceSensors,
+         settings?.waterSensors, settings?.shades, settings?.garageDoors, settings?.fans,
+         settings?.alarms, settings?.speakers, settings?.valves
         ].each { devList ->
             if (devList) allDevs.addAll(devList)
         }
     }
 
     def unique = allDevs.unique { it.id }
-    logDebug "getAllDevices() returning ${unique.size()} devices"
+    log.warn "Chatomation getAllDevices: returning ${unique.size()} devices"
     return unique
 }
 
@@ -245,10 +250,13 @@ def callAI(String systemPrompt, List messages) {
         logError "No API key configured"
         return null
     }
+    // Strip extra fields (like ts) — APIs only accept role + content
+    def cleanMessages = messages.collect { [role: it.role, content: it.content] }
+
     if (aiProvider == "OpenAI") {
-        return callOpenAI(systemPrompt, messages)
+        return callOpenAI(systemPrompt, cleanMessages)
     } else if (aiProvider == "Anthropic") {
-        return callAnthropic(systemPrompt, messages)
+        return callAnthropic(systemPrompt, cleanMessages)
     }
     logError "Unknown AI provider: ${aiProvider}"
     return null
