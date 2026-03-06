@@ -144,19 +144,22 @@ def appButtonHandler(String btn) {
 // ===========================================================================
 
 private processUserMessage(String message) {
-    if (!state.conversation) state.conversation = []
+    // Always read into a local variable and reassign state — direct mutation
+    // of nested state objects is not persisted by the Hubitat runtime.
+    def conv = state.conversation ?: []
 
     // Append user message with timestamp
     def now = new Date().format("yyyy-MM-dd h:mm a")
-    state.conversation << [role: "user", content: message, ts: now]
+    conv << [role: "user", content: message, ts: now]
 
-    // Call AI
+    // Call AI (pass local copy so the user message is included)
     def systemPrompt = buildSystemPrompt()
-    def response = parent.callAI(systemPrompt, state.conversation)
+    def response = parent.callAI(systemPrompt, conv)
 
     if (response) {
         def respTime = new Date().format("yyyy-MM-dd h:mm a")
-        state.conversation << [role: "assistant", content: response, ts: respTime]
+        conv << [role: "assistant", content: response, ts: respTime]
+        state.conversation = conv
 
         // Look for a rule JSON in the response
         def ruleJson = extractRuleJson(response)
@@ -167,10 +170,11 @@ private processUserMessage(String message) {
         trimConversation()
     } else {
         def errTime = new Date().format("yyyy-MM-dd h:mm a")
-        state.conversation << [role: "assistant", ts: errTime,
+        conv << [role: "assistant", ts: errTime,
             content: "Sorry, I could not reach the AI service. " +
                      "Please check your API key in the Chatomation parent app settings " +
                      "and try again. Check Hubitat Logs for detailed error info."]
+        state.conversation = conv
         state.lastError = "AI API call returned no response. " +
             "Open Hubitat Logs (gear icon → Logs) and look for 'Chatomation' errors."
     }
