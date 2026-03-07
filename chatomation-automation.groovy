@@ -133,20 +133,26 @@ def chatPage() {
                 "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
                 "After clicking Send, please wait for the AI to respond.</div>" +
                 "<script>" +
-                // mousedown fires before the button triggers a form submission.
-                // Blurring document.activeElement (the text field the user was
-                // typing in) commits its value into the POST body on the first
-                // click. Using activeElement avoids relying on a specific input
-                // name/selector that Hubitat's UI framework may shadow or rename.
-                "document.querySelector('[name=sendMessage]')?.addEventListener('mousedown',function(){" +
+                // Hubitat button inputs don't render with a standard name/id so
+                // querySelector('[name=sendMessage]') returns null. Instead, use
+                // a document-level mousedown listener: whenever the user clicks
+                // anything other than the focused text input, blur that input
+                // first. This commits its value into the POST body before the
+                // form submission fires, fixing the two-click-to-send problem.
+                "document.addEventListener('mousedown',function(e){" +
                 "var a=document.activeElement;" +
-                "if(a&&a.tagName!='BODY'){a.blur();}" +
+                "if(a&&a!==e.target&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')){" +
+                "a.blur();" +
+                "a.dispatchEvent(new Event('change',{bubbles:true}));}" +
                 "});" +
-                "document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
+                // Show spinner when any button containing 'Send' is clicked
+                "document.addEventListener('click',function(e){" +
+                "var t=e.target;" +
+                "if(t&&(t.textContent||'').trim()==='Send'){" +
                 "var w=document.getElementById('chatomation-wait');" +
                 "if(w)w.style.display='block';" +
                 "var h=document.getElementById('chatomation-hint');" +
-                "if(h)h.style.display='none';});" +
+                "if(h)h.style.display='none';}});" +
                 "</script>"
         }
     }
