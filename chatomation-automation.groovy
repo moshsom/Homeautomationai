@@ -182,10 +182,10 @@ private processUserMessage(String message) {
 
 private trimConversation() {
     def max = 40
-    if (state.conversation.size() > max) {
+    def conv = state.conversation
+    if (conv && conv.size() > max) {
         def keep = max - 2
-        state.conversation = state.conversation[0..1] +
-            state.conversation[-(keep)..-1]
+        state.conversation = conv[0..1] + conv[-(keep)..-1]
     }
 }
 
@@ -319,18 +319,23 @@ private activateRule(Map rule) {
 
 def installed() {
     log.info "Chatomation Automation installed"
-    state.conversation = [
-        [role: "assistant",
-         ts: new Date().format("yyyy-MM-dd h:mm a"),
-         content: "Hi! I'm Chatomation. Describe the automation you'd like " +
-                  "to create and I'll set it up for you.\n\n" +
-                  "For example:\n" +
-                  "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
-                  "- \"When the front door opens, send me a notification.\"\n" +
-                  "- \"If there's motion in the kitchen after 10 PM, turn the " +
-                  "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
-    ]
-    state.enabled = true
+    // Guard: Hubitat can call installed() on existing children when a new
+    // sibling is added via the parent page. Only initialise state that is
+    // not already set so existing conversations are never wiped.
+    if (!state.conversation) {
+        state.conversation = [
+            [role: "assistant",
+             ts: new Date().format("yyyy-MM-dd h:mm a"),
+             content: "Hi! I'm Chatomation. Describe the automation you'd like " +
+                      "to create and I'll set it up for you.\n\n" +
+                      "For example:\n" +
+                      "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
+                      "- \"When the front door opens, send me a notification.\"\n" +
+                      "- \"If there's motion in the kitchen after 10 PM, turn the " +
+                      "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
+        ]
+    }
+    if (state.enabled == null) state.enabled = true
 }
 
 def updated() {
