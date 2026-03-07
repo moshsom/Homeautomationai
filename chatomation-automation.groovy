@@ -62,6 +62,22 @@ def mainPage() {
 }
 
 def chatPage() {
+    // Lazy-init the greeting here — the most reliable place since this runs
+    // every time the page is opened, regardless of lifecycle method ordering.
+    if (!state.conversation) {
+        state.conversation = [
+            [role: "assistant",
+             ts: new Date().format("yyyy-MM-dd h:mm a"),
+             content: "Hi! I'm Chatomation. Describe the automation you'd like " +
+                      "to create and I'll set it up for you.\n\n" +
+                      "For example:\n" +
+                      "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
+                      "- \"When the front door opens, send me a notification.\"\n" +
+                      "- \"If there's motion in the kitchen after 10 PM, turn the " +
+                      "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
+        ]
+    }
+
     dynamicPage(name: "chatPage", title: "Chatomation Chat", install: false, uninstall: false) {
 
         // ---- Conversation history ----
