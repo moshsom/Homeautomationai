@@ -132,11 +132,21 @@ def chatPage() {
                 " <span style='color:#555;font-size:14px;vertical-align:middle;'>AI is thinking...</span></div>" +
                 "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
                 "After clicking Send, please wait for the AI to respond.</div>" +
-                "<script>document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
+                "<script>" +
+                // mousedown fires before the button's form submission, so blurring
+                // the text field here commits its value into the POST data on the
+                // first click (without this, Hubitat requires two clicks: one to
+                // blur/commit the field, one to actually submit).
+                "document.querySelector('[name=sendMessage]')?.addEventListener('mousedown',function(){" +
+                "var t=document.querySelector('input[name=userMessage]');" +
+                "if(t){t.blur();}" +
+                "});" +
+                "document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
                 "var w=document.getElementById('chatomation-wait');" +
                 "if(w)w.style.display='block';" +
                 "var h=document.getElementById('chatomation-hint');" +
-                "if(h)h.style.display='none';});</script>"
+                "if(h)h.style.display='none';});" +
+                "</script>"
         }
     }
 }
