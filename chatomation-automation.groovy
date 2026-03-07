@@ -115,62 +115,22 @@ def chatPage() {
             }
         }
 
-        // ---- Message input + spinner ----
+        // ---- Message input + send toggle ----
+        // Using a bool with submitOnChange:true instead of a button input.
+        // Hubitat's appButtonHandler receives stale settings values (from the
+        // previous page load) when a button is clicked, requiring two clicks.
+        // A submitOnChange bool submits the full current page state and
+        // triggers updated(), where settings.userMessage is already current.
         section() {
-            // CSS spinner animation
-            paragraph "<style>@keyframes chatomation-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>"
-
-            input "userMessage", "text", title: "Your message",
-                required: false, submitOnChange: false
-            input "sendMessage", "button", title: "Send"
-
-            // Spinner + help text shown via JS when Send is clicked
-            paragraph "<div id='chatomation-wait' style='display:none;margin-top:8px;'>" +
-                "<span style='display:inline-block;width:18px;height:18px;" +
-                "border:3px solid #ddd;border-top:3px solid #2196F3;border-radius:50%;" +
-                "animation:chatomation-spin 1s linear infinite;vertical-align:middle;'></span>" +
-                " <span style='color:#555;font-size:14px;vertical-align:middle;'>AI is thinking...</span></div>" +
-                "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
-                "After clicking Send, please wait for the AI to respond.</div>" +
-                "<script>" +
-                // Hubitat button inputs don't render with a standard name/id so
-                // querySelector('[name=sendMessage]') returns null. Instead, use
-                // a document-level mousedown listener: whenever the user clicks
-                // anything other than the focused text input, blur that input
-                // first. This commits its value into the POST body before the
-                // form submission fires, fixing the two-click-to-send problem.
-                "document.addEventListener('mousedown',function(e){" +
-                "var a=document.activeElement;" +
-                "if(a&&a!==e.target&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')){" +
-                "a.blur();" +
-                "a.dispatchEvent(new Event('change',{bubbles:true}));}" +
-                "});" +
-                // Show spinner when any button containing 'Send' is clicked
-                "document.addEventListener('click',function(e){" +
-                "var t=e.target;" +
-                "if(t&&(t.textContent||'').trim()==='Send'){" +
-                "var w=document.getElementById('chatomation-wait');" +
-                "if(w)w.style.display='block';" +
-                "var h=document.getElementById('chatomation-hint');" +
-                "if(h)h.style.display='none';}});" +
-                "</script>"
+            input "userMessage", "text", title: "Your message", required: false
+            paragraph "<div style='color:#888;font-size:13px;margin-top:4px;'>" +
+                "Type your message above, then toggle <b>Send</b> to submit.</div>"
+            input "sendMessage", "bool", title: "Send",
+                defaultValue: false, submitOnChange: true
         }
     }
 }
 
-// ===========================================================================
-//  Button handler
-// ===========================================================================
-
-def appButtonHandler(String btn) {
-    if (btn == "sendMessage") {
-        def msg = settings.userMessage?.trim()
-        if (msg) {
-            processUserMessage(msg)
-            app.updateSetting("userMessage", [type: "text", value: ""])
-        }
-    }
-}
 
 // ===========================================================================
 //  Conversation + AI
@@ -388,6 +348,18 @@ def updated() {
                       "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
         ]
     }
+    // Process a pending chat message. The bool toggle with submitOnChange:true
+    // is how the user sends — toggling it submits the full page so
+    // settings.userMessage contains the current typed value here in updated().
+    if (sendMessage) {
+        def msg = settings.userMessage?.trim()
+        if (msg) {
+            processUserMessage(msg)
+        }
+        app.updateSetting("userMessage",   [type: "text", value: ""])
+        app.updateSetting("sendMessage",   [type: "bool", value: false])
+    }
+
     state.enabled = (automationEnabled != false)
 
     // Update parent with current enabled state
