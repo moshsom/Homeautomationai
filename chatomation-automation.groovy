@@ -62,8 +62,7 @@ def mainPage() {
 }
 
 def chatPage() {
-    // Lazy-init the greeting here — the most reliable place since this runs
-    // every time the page is opened, regardless of lifecycle method ordering.
+    // Lazy-init greeting on first open.
     if (!state.conversation) {
         state.conversation = [
             [role: "assistant",
@@ -76,6 +75,16 @@ def chatPage() {
                       "- \"If there's motion in the kitchen after 10 PM, turn the " +
                       "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
         ]
+    }
+
+    // Process any pending message here rather than in appButtonHandler.
+    // Hubitat updates settings from the POST *before* rendering the page,
+    // but appButtonHandler receives a pre-update snapshot — so the message
+    // is reliably available here on the first button click.
+    def pendingMsg = settings.userMessage?.trim()
+    if (pendingMsg) {
+        processUserMessage(pendingMsg)
+        app.updateSetting("userMessage", [type: "text", value: ""])
     }
 
     dynamicPage(name: "chatPage", title: "Chatomation Chat", install: false, uninstall: false) {
@@ -115,22 +124,20 @@ def chatPage() {
             }
         }
 
-        // ---- Message input + send toggle ----
-        // Using a bool with submitOnChange:true instead of a button input.
-        // Hubitat's appButtonHandler receives stale settings values (from the
-        // previous page load) when a button is clicked, requiring two clicks.
-        // A submitOnChange bool submits the full current page state and
-        // triggers updated(), where settings.userMessage is already current.
+        // ---- Message input + send button ----
         section() {
             input "userMessage", "text", title: "Your message", required: false
-            paragraph "<div style='color:#888;font-size:13px;margin-top:4px;'>" +
-                "Type your message above, then toggle <b>Send</b> to submit.</div>"
-            input "sendMessage", "bool", title: "Send",
-                defaultValue: false, submitOnChange: true
+            input "sendMessage", "button", title: "Send"
         }
     }
 }
 
+
+// ===========================================================================
+//  Button handler — processing happens in chatPage() where settings are current
+// ===========================================================================
+
+def appButtonHandler(String btn) { /* intentionally empty */ }
 
 // ===========================================================================
 //  Conversation + AI
@@ -348,18 +355,6 @@ def updated() {
                       "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
         ]
     }
-    // Process a pending chat message. The bool toggle with submitOnChange:true
-    // is how the user sends — toggling it submits the full page so
-    // settings.userMessage contains the current typed value here in updated().
-    if (sendMessage) {
-        def msg = settings.userMessage?.trim()
-        if (msg) {
-            processUserMessage(msg)
-        }
-        app.updateSetting("userMessage",   [type: "text", value: ""])
-        app.updateSetting("sendMessage",   [type: "bool", value: false])
-    }
-
     state.enabled = (automationEnabled != false)
 
     // Update parent with current enabled state
