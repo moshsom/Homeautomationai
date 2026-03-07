@@ -276,21 +276,30 @@ private callAnthropic(String systemPrompt, List messages) {
 // ===========================================================================
 
 def registerChildRule(String childId, Map rule, boolean enabled) {
-    if (!state.childRules) state.childRules = [:]
-    state.childRules[childId] = [rule: rule, enabled: enabled]
+    // Read into local var, mutate, then reassign — direct mutation of nested
+    // state maps is not persisted by the Hubitat runtime.
+    def rules = state.childRules ?: [:]
+    rules[childId] = [rule: rule, enabled: enabled]
+    state.childRules = rules
     log.info "Chatomation: registered rule '${rule.name}' for child ${childId}"
     rebuildAllSubscriptions()
 }
 
 def unregisterChildRule(String childId) {
-    state.childRules?.remove(childId)
+    def rules = state.childRules ?: [:]
+    rules.remove(childId)
+    state.childRules = rules
     log.info "Chatomation: unregistered rule for child ${childId}"
     rebuildAllSubscriptions()
 }
 
 def setChildRuleEnabled(String childId, boolean enabled) {
-    if (state.childRules?.containsKey(childId)) {
-        state.childRules[childId].enabled = enabled
+    def rules = state.childRules ?: [:]
+    if (rules.containsKey(childId)) {
+        def entry = rules[childId]
+        entry.enabled = enabled
+        rules[childId] = entry
+        state.childRules = rules
         log.info "Chatomation: child ${childId} enabled=${enabled}"
         rebuildAllSubscriptions()
     }

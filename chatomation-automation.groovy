@@ -62,6 +62,31 @@ def mainPage() {
 }
 
 def chatPage() {
+    // Lazy-init greeting on first open.
+    if (!state.conversation) {
+        state.conversation = [
+            [role: "assistant",
+             ts: new Date().format("yyyy-MM-dd h:mm a"),
+             content: "Hi! I'm Chatomation. Describe the automation you'd like " +
+                      "to create and I'll set it up for you.\n\n" +
+                      "For example:\n" +
+                      "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
+                      "- \"When the front door opens, send me a notification.\"\n" +
+                      "- \"If there's motion in the kitchen after 10 PM, turn the " +
+                      "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
+        ]
+    }
+
+    // Process any pending message here rather than in appButtonHandler.
+    // Hubitat updates settings from the POST *before* rendering the page,
+    // but appButtonHandler receives a pre-update snapshot — so the message
+    // is reliably available here on the first button click.
+    def pendingMsg = settings.userMessage?.trim()
+    if (pendingMsg) {
+        processUserMessage(pendingMsg)
+        app.updateSetting("userMessage", [type: "text", value: ""])
+    }
+
     dynamicPage(name: "chatPage", title: "Chatomation Chat", install: false, uninstall: false) {
 
         // ---- Conversation history ----
@@ -99,64 +124,42 @@ def chatPage() {
             }
         }
 
-        // ---- Message input + spinner ----
+        // ---- Message input + send button ----
         section() {
-            // CSS spinner animation
-            paragraph "<style>@keyframes chatomation-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>"
-
-            input "userMessage", "text", title: "Your message",
-                required: false, submitOnChange: false
+            input "userMessage", "text", title: "Your message", required: false
             input "sendMessage", "button", title: "Send"
-
-            // Spinner + help text shown via JS when Send is clicked
-            paragraph "<div id='chatomation-wait' style='display:none;margin-top:8px;'>" +
-                "<span style='display:inline-block;width:18px;height:18px;" +
-                "border:3px solid #ddd;border-top:3px solid #2196F3;border-radius:50%;" +
-                "animation:chatomation-spin 1s linear infinite;vertical-align:middle;'></span>" +
-                " <span style='color:#555;font-size:14px;vertical-align:middle;'>AI is thinking...</span></div>" +
-                "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
-                "After clicking Send, please wait for the AI to respond.</div>" +
-                "<script>document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
-                "var w=document.getElementById('chatomation-wait');" +
-                "if(w)w.style.display='block';" +
-                "var h=document.getElementById('chatomation-hint');" +
-                "if(h)h.style.display='none';});</script>"
         }
     }
 }
 
+
 // ===========================================================================
-//  Button handler
+//  Button handler — processing happens in chatPage() where settings are current
 // ===========================================================================
 
-def appButtonHandler(String btn) {
-    if (btn == "sendMessage") {
-        def msg = settings.userMessage?.trim()
-        if (msg) {
-            processUserMessage(msg)
-            app.updateSetting("userMessage", [type: "text", value: ""])
-        }
-    }
-}
+def appButtonHandler(String btn) { /* intentionally empty */ }
 
 // ===========================================================================
 //  Conversation + AI
 // ===========================================================================
 
 private processUserMessage(String message) {
-    if (!state.conversation) state.conversation = []
+    // Always read into a local variable and reassign state — direct mutation
+    // of nested state objects is not persisted by the Hubitat runtime.
+    def conv = state.conversation ?: []
 
     // Append user message with timestamp
     def now = new Date().format("yyyy-MM-dd h:mm a")
-    state.conversation << [role: "user", content: message, ts: now]
+    conv << [role: "user", content: message, ts: now]
 
-    // Call AI
+    // Call AI (pass local copy so the user message is included)
     def systemPrompt = buildSystemPrompt()
-    def response = parent.callAI(systemPrompt, state.conversation)
+    def response = parent.callAI(systemPrompt, conv)
 
     if (response) {
         def respTime = new Date().format("yyyy-MM-dd h:mm a")
-        state.conversation << [role: "assistant", content: response, ts: respTime]
+        conv << [role: "assistant", content: response, ts: respTime]
+        state.conversation = conv
 
         // Look for a rule JSON in the response
         def ruleJson = extractRuleJson(response)
@@ -167,10 +170,11 @@ private processUserMessage(String message) {
         trimConversation()
     } else {
         def errTime = new Date().format("yyyy-MM-dd h:mm a")
-        state.conversation << [role: "assistant", ts: errTime,
+        conv << [role: "assistant", ts: errTime,
             content: "Sorry, I could not reach the AI service. " +
                      "Please check your API key in the Chatomation parent app settings " +
                      "and try again. Check Hubitat Logs for detailed error info."]
+        state.conversation = conv
         state.lastError = "AI API call returned no response. " +
             "Open Hubitat Logs (gear icon → Logs) and look for 'Chatomation' errors."
     }
@@ -178,10 +182,10 @@ private processUserMessage(String message) {
 
 private trimConversation() {
     def max = 40
-    if (state.conversation.size() > max) {
+    def conv = state.conversation
+    if (conv && conv.size() > max) {
         def keep = max - 2
-        state.conversation = state.conversation[0..1] +
-            state.conversation[-(keep)..-1]
+        state.conversation = conv[0..1] + conv[-(keep)..-1]
     }
 }
 
@@ -315,22 +319,42 @@ private activateRule(Map rule) {
 
 def installed() {
     log.info "Chatomation Automation installed"
-    state.conversation = [
-        [role: "assistant",
-         ts: new Date().format("yyyy-MM-dd h:mm a"),
-         content: "Hi! I'm Chatomation. Describe the automation you'd like " +
-                  "to create and I'll set it up for you.\n\n" +
-                  "For example:\n" +
-                  "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
-                  "- \"When the front door opens, send me a notification.\"\n" +
-                  "- \"If there's motion in the kitchen after 10 PM, turn the " +
-                  "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
-    ]
-    state.enabled = true
+    // Guard: Hubitat can call installed() on existing children when a new
+    // sibling is added via the parent page. Only initialise state that is
+    // not already set so existing conversations are never wiped.
+    if (!state.conversation) {
+        state.conversation = [
+            [role: "assistant",
+             ts: new Date().format("yyyy-MM-dd h:mm a"),
+             content: "Hi! I'm Chatomation. Describe the automation you'd like " +
+                      "to create and I'll set it up for you.\n\n" +
+                      "For example:\n" +
+                      "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
+                      "- \"When the front door opens, send me a notification.\"\n" +
+                      "- \"If there's motion in the kitchen after 10 PM, turn the " +
+                      "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
+        ]
+    }
+    if (state.enabled == null) state.enabled = true
 }
 
 def updated() {
     log.info "Chatomation Automation updated"
+    // Hubitat may call updated() instead of (or before) installed() for new
+    // child apps, so initialise the greeting here too if not yet set.
+    if (!state.conversation) {
+        state.conversation = [
+            [role: "assistant",
+             ts: new Date().format("yyyy-MM-dd h:mm a"),
+             content: "Hi! I'm Chatomation. Describe the automation you'd like " +
+                      "to create and I'll set it up for you.\n\n" +
+                      "For example:\n" +
+                      "- \"Turn on the porch light at sunset and off at sunrise.\"\n" +
+                      "- \"When the front door opens, send me a notification.\"\n" +
+                      "- \"If there's motion in the kitchen after 10 PM, turn the " +
+                      "light on at 20 %. Turn it off after 10 minutes of no motion.\""]
+        ]
+    }
     state.enabled = (automationEnabled != false)
 
     // Update parent with current enabled state
