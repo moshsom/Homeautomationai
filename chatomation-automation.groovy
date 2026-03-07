@@ -133,13 +133,14 @@ def chatPage() {
                 "<div id='chatomation-hint' style='color:#888;font-size:13px;margin-top:4px;'>" +
                 "After clicking Send, please wait for the AI to respond.</div>" +
                 "<script>" +
-                // mousedown fires before the button's form submission, so blurring
-                // the text field here commits its value into the POST data on the
-                // first click (without this, Hubitat requires two clicks: one to
-                // blur/commit the field, one to actually submit).
+                // mousedown fires before the button triggers a form submission.
+                // Blurring document.activeElement (the text field the user was
+                // typing in) commits its value into the POST body on the first
+                // click. Using activeElement avoids relying on a specific input
+                // name/selector that Hubitat's UI framework may shadow or rename.
                 "document.querySelector('[name=sendMessage]')?.addEventListener('mousedown',function(){" +
-                "var t=document.querySelector('input[name=userMessage]');" +
-                "if(t){t.blur();}" +
+                "var a=document.activeElement;" +
+                "if(a&&a.tagName!='BODY'){a.blur();}" +
                 "});" +
                 "document.querySelector('[name=sendMessage]')?.addEventListener('click',function(){" +
                 "var w=document.getElementById('chatomation-wait');" +
